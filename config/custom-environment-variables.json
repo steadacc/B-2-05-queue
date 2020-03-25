@@ -1,0 +1,26 @@
+{
+  "sqs": {
+    "region": "AWS_REGION",
+    "queue_url": "DELIVERY_QUEUE_URL"
+  },
+  "rekognition": {
+    "region": "AWS_REGION"
+  },
+  "sns": {
+    "region": "AWS_REGION",
+    "topic_arn": "SNS_TOPIC_ARN",
+    "filter_subject": "SNS_FILTER_SUBJECT"
+  },
+  "endpoints": {
+    "tag": "ENDPOINT_TAG"
+  },
+  "s3": {
+    "region": "AWS_REGION"
+  },
+  "log": {
+    "name": "SERVICE_NAME",
+    "base": {
+      "env": "NODE_ENV"
+    }
+  }
+}

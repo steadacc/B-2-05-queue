@@ -1,0 +1,25 @@
+{
+  "sqs": {
+    "region": "",
+    "queue_url": ""
+  },
+  "rekognition": {
+    "region": ""
+  },
+  "s3": {
+    "region": ""
+  },
+  "sns": {
+    "region": "eu-west-1",
+    "topic_arn": "arn:aws:sns:eu-west-1:459181319149:sadamo-b-2-05",
+    "filter_subject": ""
+  },
+  "log": {
+    "name": "app",
+    "base": {
+      "env": "dev"
+    },
+    "enabled": false,
+    "level": 20
+  }
+}

@@ -1,0 +1,250 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Notification Event Daemon",
+  "Parameters": {
+    "NetworkStackNameParameter": {
+      "Type": "String",
+      "Default": "vpc",
+      "Description": "Network base stack"
+    },
+    "EcsStackNameParameter": {
+      "Type": "String",
+      "Default": "ecs",
+      "Description": "ECS cluster cloudformation stack name"
+    },
+    "Environment": {
+      "Type": "String",
+      "Default": "prod"
+    },
+    "ServiceName": {
+      "Type": "String",
+      "Default": "events-notify-daemon",
+      "Description": "Your application name"
+    },
+    "Release": {
+      "Type": "String",
+      "Default": "1234356",
+      "Description": "Docker image release (TAG)"
+    },
+    "DesiredCapacity": {
+      "Type": "Number",
+      "Default": "1",
+      "Description": "Number of instances to launch in your ECS cluster."
+    },
+    "MaxSize": {
+      "Type": "Number",
+      "Default": 1,
+      "Description": "Number of max task count"
+    },
+    "CPU": {
+      "Type": "Number",
+      "Default": 256,
+      "Description": "CPU Shares"
+    },
+    "Memory": {
+      "Type": "Number",
+      "Default": 256,
+      "Description": "Memory limit in MB"
+    },
+    "SnsTopicArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "SNS Topic Arn"
+    },
+    "SnsTopicImportSubject": {
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "QueueSubscription": {
+      "Type": "AWS::SNS::Subscription",
+      "Properties": {
+        "Endpoint": {
+          "Fn::GetAtt": [
+            "Queue",
+            "Arn"
+          ]
+        },
+        "FilterPolicy": {
+          "subject": { "Fn::Split" : [ ",", {"Ref": "SnsTopicImportSubject" } ] }
+        },
+        "Protocol": "sqs",
+        "TopicArn": {
+          "Ref": "SnsTopicArn"
+        }
+      }
+    },
+    "Queue": {
+      "Type": "AWS::SQS::Queue",
+      "Properties": {
+        "MaximumMessageSize": 262144,
+        "MessageRetentionPeriod": 345600,
+        "QueueName": {
+          "Fn::Sub": "${ServiceName}-${Environment}"
+        },
+        "ReceiveMessageWaitTimeSeconds": 20,
+        "VisibilityTimeout": 300
+      }
+    },
+    "QueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Properties": {
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "MySQSPolicy001",
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": "sqs:SendMessage",
+              "Resource": {"Fn::GetAtt" : [ "Queue", "Arn" ]},
+              "Condition": {
+                "ArnEquals": {
+                  "aws:SourceArn": {"Ref": "SnsTopicArn"}
+                }
+              }
+            }
+          ]
+        },
+        "Queues": [
+          {
+            "Ref": "Queue"
+          }
+        ]
+      }
+    },
+    "TaskRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "ecs-tasks.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "Path": "/",
+        "Policies": [
+          {
+            "PolicyName": "sqs-sns",
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:*"
+                  ],
+                  "Resource": [
+                    "*"
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "taskdefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "TaskRoleArn": {
+          "Ref": "TaskRole"
+        },
+        "ContainerDefinitions": [
+          {
+            "Name": {
+              "Ref": "ServiceName"
+            },
+            "Cpu": {
+              "Ref": "CPU"
+            },
+            "Essential": "true",
+            "Image": {
+              "Fn::Join": [
+                ":",
+                [
+                  "424837382813.dkr.ecr.eu-west-1.amazonaws.com/daemon/detect-image",
+                  {
+                    "Ref": "Release"
+                  }
+                ]
+              ]
+            },
+            "Memory": {
+              "Ref": "Memory"
+            },
+            "Environment": [
+              {
+                "Name": "NODE_ENV",
+                "Value": {"Ref": "Environment"}
+              },
+              {
+                "Name": "AWS_REGION",
+                "Value": {
+                  "Ref": "AWS::Region"
+                }
+              },
+              {
+                "Name": "SERVICE_NAME",
+                "Value": {
+                  "Ref": "ServiceName"
+                }
+              },
+              {
+                "Name": "DELIVERY_QUEUE_URL",
+                "Value": {
+                  "Ref": "Queue"
+                }
+              }
+            ],
+            "LogConfiguration": {
+              "LogDriver": "awslogs",
+              "Options": {
+                "awslogs-group": {
+                  "Fn::ImportValue": {
+                    "Fn::Sub": "${EcsStackNameParameter}-LogGroupName"
+                  }
+                },
+                "awslogs-region": {
+                  "Ref": "AWS::Region"
+                },
+                "awslogs-stream-prefix": {
+                  "Ref": "ServiceName"
+                }
+              }
+            }
+          }
+        ],
+        "Volumes": []
+      }
+    },
+    "service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": {
+          "Fn::ImportValue": {
+            "Fn::Sub": "${EcsStackNameParameter}-ECSCluster"
+          }
+        },
+        "DesiredCount": {
+          "Ref": "DesiredCapacity"
+        },
+        "TaskDefinition": {
+          "Ref": "taskdefinition"
+        },
+        "DeploymentConfiguration": {
+          "MaximumPercent": 100,
+          "MinimumHealthyPercent": 0
+        }
+      }
+    }
+  }
+}

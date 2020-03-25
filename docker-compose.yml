@@ -1,0 +1,14 @@
+version: '3'
+services:
+ web:
+    build: .
+    ports:
+      - "3000:3000"
+    command: ./node_modules/.bin/nodemon src/index.js
+    volumes:
+      - .:/data
+      - $HOME/.aws:/root/.aws
+    working_dir: /data
+    environment:
+      - NODE_ENV=development
+      - AWS_PROFILE=saml
